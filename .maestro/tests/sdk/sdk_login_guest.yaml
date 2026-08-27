@@ -1,0 +1,25 @@
+# 게스트 로그인 흐름을 검증하는 플로우 템플릿.
+# 계정 정보는 .env 에 두고 실행 시점에 주입하므로 저장소에 남지 않는다.
+appId: ${APP_ID}
+name: 게스트 로그인 검증
+tags:
+  - sdk
+  - login
+  - wip
+---
+- runFlow:
+    file: ../../subflows/launch_app_fresh.yaml
+
+# TODO: 아래 문구들을 실제 SDK 로그인 화면의 요소로 교체하세요.
+- tapOn: "게스트로 시작"
+
+- extendedWaitUntil:
+    visible: "로그인 완료"
+    timeout: 30000
+
+- assertVisible: "로그인 완료"
+
+# 발급된 사용자 식별자를 로그로 남겨 두면 실패 원인을 추적하기 쉬워진다.
+- evalScript: ${console.log("게스트 로그인 성공, 환경=" + SDK_ENV)}
+
+- takeScreenshot: guest_login_success

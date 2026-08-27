@@ -1,0 +1,23 @@
+# 로컬 환경 변수 (계정 정보와 내부 패키지 이름이 담기므로 절대 커밋하지 않는다)
+.env
+.env.local
+
+# Maestro 실행 산출물
+.maestro/output/
+maestro-report.*
+*.mp4
+screenshots/
+
+# 테스트용 앱 바이너리
+*.apk
+*.aab
+*.app
+*.ipa
+builds/
+
+# macOS
+.DS_Store
+
+# 에디터 설정
+.idea/
+.vscode/

@@ -1,0 +1,20 @@
+# SDK 초기화가 완료되는지 검증하는 플로우 템플릿.
+# 실제 화면 문구와 요소 식별자를 채워 넣은 뒤 tags 에서 wip 를 제거하면 실행 대상에 포함된다.
+appId: ${APP_ID}
+name: SDK 초기화 검증
+tags:
+  - sdk
+  - wip
+---
+- runFlow:
+    file: ../../subflows/launch_app_fresh.yaml
+
+# TODO: SDK 초기화 완료를 알리는 화면 요소로 교체하세요.
+# 요소를 직접 찾으려면 `maestro studio` 를 실행하거나,
+# Claude Code 에서 Maestro MCP 의 inspect_screen 도구를 사용하면 됩니다.
+- extendedWaitUntil:
+    visible: "초기화 완료"
+    timeout: 30000
+
+- assertVisible: "초기화 완료"
+- takeScreenshot: sdk_initialized

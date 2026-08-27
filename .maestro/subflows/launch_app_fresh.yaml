@@ -1,0 +1,14 @@
+# 앱 상태를 초기화한 뒤 실행하는 공용 서브플로우.
+# subflows/ 폴더에 있으므로 최상위 테스트로 실행되지 않고, runFlow 로 호출될 때만 동작한다.
+appId: ${APP_ID}
+env:
+  # 호출한 쪽에서 값을 넘기지 않으면 상태를 초기화한다.
+  CLEAR_STATE: ${CLEAR_STATE || "true"}
+---
+- runFlow:
+    when:
+      true: ${CLEAR_STATE === "true"}
+    commands:
+      - clearState
+
+- launchApp

@@ -1,0 +1,19 @@
+# 대상 앱이 정상적으로 설치되어 실행되는지 확인하는 최소 스모크 테스트.
+# 화면 문구에 의존하지 않으므로 어떤 앱에서도 그대로 통과한다.
+appId: ${APP_ID}
+name: 앱 실행 스모크 테스트
+tags:
+  - smoke
+---
+- runFlow:
+    file: ../../subflows/launch_app_fresh.yaml
+    env:
+      CLEAR_STATE: "true"
+
+# 첫 화면이 그려질 시간을 확보한다.
+- extendedWaitUntil:
+    visible:
+      id: ".*"
+    timeout: 15000
+
+- takeScreenshot: launch_first_screen

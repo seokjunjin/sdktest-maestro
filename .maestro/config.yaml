@@ -1,0 +1,16 @@
+# Maestro 워크스페이스 전역 설정
+# 참고: https://docs.maestro.dev/maestro-flows/workspace-management/project-configuration
+
+# 테스트 탐색 경로. Maestro는 기본적으로 지정한 디렉터리의 최상단 파일만 실행하므로,
+# tests/ 하위 폴더까지 재귀적으로 포함시키려면 ** 글롭이 필요하다.
+flows:
+  - "tests/**"
+
+# 작성 중인 플로우는 전역적으로 제외한다. 개별 플로우 파일에 tags: [wip] 를 붙이면 된다.
+excludeTags:
+  - wip
+
+platform:
+  ios:
+    # iOS 뷰 계층에서 모달 뒤의 배경 요소까지 조회할지 여부
+    snapshotKeyHonorModalViews: false
