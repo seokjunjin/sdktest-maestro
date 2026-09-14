@@ -54,7 +54,18 @@ else
   fail ".env 가 없습니다. cp .env.example .env 로 만든 뒤 값을 채워 주세요."
 fi
 
-echo "6. Claude Code 의 Maestro MCP 연결"
+echo "6. AI 검증용 Maestro Cloud API 키"
+if [[ -f "$REPO_ROOT/.env" ]] && grep -qE '^MAESTRO_CLOUD_API_KEY=.+' "$REPO_ROOT/.env"; then
+  ok "MAESTRO_CLOUD_API_KEY 가 설정되어 있습니다."
+elif [[ -n "${MAESTRO_CLOUD_API_KEY:-}" ]]; then
+  ok "MAESTRO_CLOUD_API_KEY 가 환경 변수로 설정되어 있습니다."
+else
+  echo "  [참고] MAESTRO_CLOUD_API_KEY 가 없습니다. .env 의 AI_ASSERT 를 true 로 켜서"
+  echo "         Unity 화면 내용까지 검증하려면 maestro login 으로 발급받아 넣어 주세요."
+  echo "         AI_ASSERT 를 끈 상태라면 없어도 모든 플로우가 실행됩니다."
+fi
+
+echo "7. Claude Code 의 Maestro MCP 연결"
 if command -v claude >/dev/null 2>&1; then
   if claude mcp list 2>/dev/null | grep -qi maestro; then
     ok "maestro MCP 서버가 등록되어 있습니다."

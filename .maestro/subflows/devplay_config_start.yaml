@@ -1,0 +1,109 @@
+# DevPlay SDK Configuration 화면에서 대상 환경을 설정한 뒤 Start 를 누르는 서브플로우.
+#
+# 이 화면은 Unity 로 렌더링되기 때문에 뷰 계층에 노출되는 요소가 unitySurfaceView 하나뿐이고,
+# 문구나 식별자로 개별 항목을 지정할 방법이 없다. 그래서 모든 조작을 화면 크기에 대한
+# 백분율 좌표로 지정한다. 좌표는 세로 방향 19.5:9 단말을 기준으로 측정했으므로,
+# 화면 비율이 크게 다른 태블릿에서는 다시 측정해야 한다.
+#
+# 모든 탭에 retryTapIfNoChange: false 를 지정한 이유는 다음과 같다. Maestro 는 탭 이후에
+# 뷰 계층이 바뀌지 않으면 탭이 전달되지 않은 것으로 보고 한 번 더 누르는데, 이 앱은 화면이
+# 어떻게 바뀌어도 뷰 계층이 항상 동일하다. 그래서 재시도를 켜 두면 체크박스가 두 번 토글되어
+# 원래 값으로 돌아가고, 드롭다운도 열렸다가 바로 닫혀 버린다.
+#
+# 체크박스는 누를 때마다 값이 뒤집히는 토글이다. 따라서 이 서브플로우는 clearState 직후의
+# 초기값, 즉 Reception Server Type 이 Origin 이고 CDN Download 가 On 인 상태를 전제한다.
+appId: ${APP_ID}
+env:
+  # 대상 환경. Environment 드롭다운의 Dev, QA, Prod 항목에 각각 대응한다.
+  SDK_ENV: ${SDK_ENV || "qa"}
+  # Unity 화면을 assertWithAI 로 검증할지 여부. 기본값은 끈 상태다.
+  AI_ASSERT: ${AI_ASSERT || "false"}
+---
+- assertTrue:
+    condition: '${["dev", "qa", "live"].indexOf(SDK_ENV) >= 0}'
+    label: SDK_ENV 가 dev, qa, live 중 하나인지 확인
+
+# 설정 화면은 회전하며 날아 들어오는 등장 연출과 함께 표시되고, Google Play 게임즈의 환영
+# 배너가 그 위에 잠시 겹치기도 한다. 이 화면에는 반복 재생되는 배경 연출이 없으므로
+# waitForAnimationToEnd 는 화면이 실제로 멈추는 시점에 반환된다. 즉 아래 대기는 고정 대기가
+# 아니라 조건 대기로 동작하며, 지정한 시간을 다 쓰지 않고 대개 몇 초 안에 끝난다.
+- waitForAnimationToEnd:
+    timeout: 30000
+
+# 앱을 실행한 뒤 처음 보내는 탭은 앱에 전달되지 않고 사라진다. 그래서 이미 선택되어 있어서
+# 눌러도 화면이 바뀌지 않는 Main 탭을 먼저 한 번 눌러, 이 손실을 대신 흡수하게 한다.
+# 이 탭이 없으면 바로 뒤의 드롭다운이 열리지 않고 이후 좌표가 모두 어긋난다.
+- tapOn:
+    point: "12%,4%"
+    retryTapIfNoChange: false
+    label: 첫 탭 손실을 흡수하기 위해 Main 탭 누르기
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# 펼쳐진 드롭다운 목록은 Dev, QA, Prod 순서로 표시되며 각 행의 세로 위치가 아래 값에 해당한다.
+- evalScript: '${output.envRowY = SDK_ENV === "dev" ? 20 : SDK_ENV === "qa" ? 23 : 26}'
+
+- tapOn:
+    point: "62%,17%"
+    retryTapIfNoChange: false
+    label: Environment 드롭다운 열기
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- tapOn:
+    point: "62%,${output.envRowY}%"
+    retryTapIfNoChange: false
+    label: Environment 목록에서 ${SDK_ENV} 선택
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- tapOn:
+    point: "37%,23%"
+    retryTapIfNoChange: false
+    label: Reception Server Type 의 체크를 해제해 Clone 선택
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- tapOn:
+    point: "37%,50%"
+    retryTapIfNoChange: false
+    label: CDN Download 의 체크를 해제해 Off 선택
+- waitForAnimationToEnd:
+    timeout: 3000
+
+# 설정이 의도한 대로 반영되었는지 확인한다. 세 항목 모두 Unity 가 그린 문구로만 구분되므로
+# 뷰 계층으로는 판별할 수 없고, 화면을 읽는 방식으로만 검증할 수 있다. 그런데 이 화면에는
+# SDK APIKey 가 함께 표시되고 assertWithAI 는 스크린샷을 Maestro Cloud 로 전송하므로,
+# AI_ASSERT 를 켠 경우에만 검증한다. 끈 상태에서도 스크린샷은 증적으로 남는다.
+#
+# 이 검증을 끄면 세 항목이 실제로 반영되었는지 확인하지 못한다는 점은 알고 있어야 한다.
+# 좌표가 어긋나 Dev 환경으로 실행되어도 이후 단계는 그대로 통과한다.
+- takeScreenshot: devplay_config_applied
+- runFlow:
+    when:
+      true: ${AI_ASSERT == "true"}
+    commands:
+      - assertWithAI:
+          assertion: "DevPlay SDK Configuration 화면에서 Environment 항목이 ${SDK_ENV} 값으로 선택되어 있고, Reception Server Type 항목이 Origin 이 아니라 Clone 으로, CDN Download 항목이 On 이 아니라 Off 로 표시되어 있다."
+          optional: false
+
+# Start 버튼은 목록 최하단에 있고 초기 화면에서는 아래쪽이 잘려 있어서 탭이 전달되지 않는다.
+# 스크롤 한계까지 밀어 올리면 버튼의 위치가 고정되므로, 그 상태에서 좌표로 누른다.
+- repeat:
+    times: 3
+    commands:
+      - swipe:
+          start: "50%,85%"
+          end: "50%,20%"
+          duration: 400
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Start 는 버튼이므로 두 번 눌려도 결과가 같다. 스와이프 직후에도 탭이 사라지는 경우가
+# 있었으므로 repeat 으로 두 번 보내 손실에 대비한다.
+- tapOn:
+    point: "49%,91%"
+    retryTapIfNoChange: false
+    repeat: 2
+    delay: 500
+    label: 최하단의 Start 버튼 탭

@@ -1,0 +1,61 @@
+# 게임 최초 실행 시 표시되는 나이 입력과 약관 동의를 처리하는 서브플로우.
+#
+# 이 두 화면은 Unity 가 아니라 DevPlay SDK 의 네이티브 액티비티
+# (com.devplay.provisioning.presentation.view 의 AgetestActivity, TermsActivity)이다.
+# 그래서 뷰 계층에 문구와 식별자가 그대로 노출되며, 좌표 대신 선택자로 조작할 수 있고
+# 화면 내용도 assertVisible 로 검증할 수 있다. Unity 로 그려지는 화면에 필요한 좌표 조작이나
+# AI 검증은 여기에서는 쓰지 않는다.
+appId: ${APP_ID}
+---
+# 게임 기동에 30 초 가까이 걸리므로 넉넉하게 기다린다.
+- extendedWaitUntil:
+    visible: "나이를 입력해 주세요"
+    timeout: 60000
+
+# 슬라이더(btn_ctrl)는 끌어야 값이 바뀌어서 지정한 값을 정확히 맞추기 어렵다. 반면 btn_plus 는
+# 한 번 누를 때마다 1 씩 올라가므로, 원하는 횟수만큼 눌러서 정확한 나이를 입력할 수 있다.
+#
+# 여러 번 누를 때는 repeat 명령으로 tapOn 을 반복하지 말고, 아래처럼 tapOn 한 번에 repeat 을
+# 지정해야 한다. 전자는 반복마다 요소를 다시 찾느라 뷰 계층을 매번 조회해서 한 번에 약
+# 1,140 ms 가 걸리지만, 후자는 조회를 한 번만 하고 눌러서 같은 19회가 약 780 ms 씩으로
+# 줄어든다. 실제 측정에서 21,743 ms 에서 14,761 ms 로 1.47 배 빨라졌다.
+#
+# 나이를 바꾸려면 아래 repeat 값과 그 다음 assertVisible 의 숫자를 함께 고쳐야 한다.
+# repeat 인자는 환경 변수를 받지 못하고 숫자 값만 허용하기 때문에 두 곳에 나누어 적는다.
+- tapOn:
+    id: "btn_plus"
+    repeat: 19
+    delay: 680
+    label: 나이를 19 로 올리기
+
+# 입력된 값이 화면에 그대로 표시되므로 정확히 검증한다. 제목 아래에 있는 숫자로 한정해서,
+# 화면의 다른 숫자와 섞이지 않게 한다.
+- assertVisible:
+    text: "19"
+    below:
+      text: "나이를 입력해 주세요"
+    label: 입력된 나이가 19 인지 확인
+
+- tapOn:
+    id: "btn_ok"
+    label: 나이 입력 확인
+
+- extendedWaitUntil:
+    visible: "게임을 이용하려면 약관 동의가 필요해요"
+    timeout: 20000
+
+# 필수와 선택 항목이 모두 표시되는지 확인한 뒤 한 번에 동의한다.
+- assertVisible: "[필수]서비스 이용약관"
+- assertVisible: "[필수]개인정보 수집 및 이용동의"
+- assertVisible: "[필수]DevPlay 서비스 이용 약관"
+- assertVisible: "[선택]주간 광고성 푸시 동의"
+- assertVisible: "[선택]야간 광고성 푸시 동의"
+
+- tapOn: "모두 동의"
+
+# 시작하기 버튼의 활성 여부는 색으로만 구분되고, 비활성 상태에서는 뷰 계층에 clickable 이
+# false 로 나타나지만 Maestro 선택자에는 clickable 매처가 없다. 그래서 활성 상태를 직접
+# 검증하는 대신, 버튼을 눌러 다음 화면이 실제로 나타나는지로 검증한다. 동의가 반영되지
+# 않았다면 버튼이 동작하지 않아 아래 대기가 실패한다.
+- takeScreenshot: devplay_consent_agreed
+- tapOn: "시작하기"

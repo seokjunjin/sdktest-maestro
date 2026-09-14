@@ -23,12 +23,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # .env 의 각 항목을 maestro 의 -e 인자로 변환한다. 값이 비어 있는 항목은 건너뛴다.
+# MAESTRO_ 로 시작하는 항목은 플로우에서 참조하는 변수가 아니라 Maestro CLI 자체의 설정이므로,
+# -e 로 넘기는 대신 프로세스 환경 변수로 내보낸다. AI 검증에 쓰이는 MAESTRO_CLOUD_API_KEY 가
+# 여기에 해당한다.
 ENV_ARGS=()
 while IFS= read -r line || [[ -n "$line" ]]; do
   [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
   key="${line%%=*}"
   value="${line#*=}"
   [[ -z "$key" || -z "$value" ]] && continue
+  if [[ "$key" == MAESTRO_* ]]; then
+    export "$key=$value"
+    continue
+  fi
   ENV_ARGS+=(-e "$key=$value")
 done <"$ENV_FILE"
 

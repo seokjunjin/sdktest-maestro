@@ -1,25 +1,99 @@
-# 게스트 로그인 흐름을 검증하는 플로우 템플릿.
-# 계정 정보는 .env 에 두고 실행 시점에 주입하므로 저장소에 남지 않는다.
+# 게스트 로그인 흐름을 검증하는 플로우. 사용자 시나리오 "앱 시작/게스트 로그인" 을 옮긴 것이다.
+#
+# 이 앱의 화면은 두 종류로 나뉘며, 종류에 따라 조작과 검증 방식이 다르다.
+#
+#  - DevPlay SDK 가 그리는 화면(나이 입력, 약관 동의, IDP 로그인, 게스트 로그인 주의사항)은
+#    네이티브 액티비티라서 뷰 계층에 문구와 식별자가 노출된다. 선택자로 조작하고
+#    assertVisible 로 검증한다.
+#  - 게임 본체가 그리는 화면(DevPlay SDK Configuration, 로비)은 Unity 로 렌더링되어
+#    뷰 계층에 unitySurfaceView 하나만 노출된다. 좌표로 조작해야 하고 화면 내용은
+#    뷰 계층으로 검증할 수 없다.
+#
+# 후자에 해당하는 검증은 AI_ASSERT 를 true 로 지정했을 때만 assertWithAI 로 수행한다. 이
+# 명령은 스크린샷을 Maestro Cloud 로 전송하는데, SDK Configuration 화면에는 SDK APIKey 가,
+# 로비 화면에는 내부 게임 엔드포인트가 함께 찍히기 때문에 기본값을 false 로 두었다. 끈 상태
+# 에서도 해당 화면의 스크린샷은 증적으로 남는다.
+#
+# 시나리오에는 있지만 자동화되지 않는 항목이 두 가지 있다.
+#  - 사내 Wifi 연결 여부는 Maestro 가 확인할 수 없으므로 실행하는 쪽에서 보장해야 한다.
+#  - 알림 권한 요청 대화상자는 Maestro 가 앱을 실행할 때 런타임 권한을 자동으로 허용하기
+#    때문에 표시되지 않는다. 아래 서브플로우의 launchApp 이 그 동작을 명시하고 있다.
 appId: ${APP_ID}
 name: 게스트 로그인 검증
 tags:
   - sdk
   - login
-  - wip
+env:
+  # Unity 화면을 assertWithAI 로 검증할지 여부. 기본값은 끈 상태다.
+  AI_ASSERT: ${AI_ASSERT || "false"}
 ---
 - runFlow:
     file: ../../subflows/launch_app_fresh.yaml
-
-# TODO: 아래 문구들을 실제 SDK 로그인 화면의 요소로 교체하세요.
-- tapOn: "게스트로 시작"
+    env:
+      CLEAR_STATE: "true"
 
 - extendedWaitUntil:
-    visible: "로그인 완료"
+    visible:
+      id: ${APP_ID}:id/unitySurfaceView
     timeout: 30000
 
-- assertVisible: "로그인 완료"
+# DevPlay SDK Configuration 화면에서 환경을 SDK_ENV 값으로, 접속 서버를 Clone, CDN 내려받기를
+# Off 로 맞추고 Start 를 누른다. 서브플로우가 SDK_ENV 를 환경 변수에서 직접 읽고 기본값도
+# 가지고 있으므로 여기에서 값을 다시 넘기지 않는다. 넘기면 값이 비어 있을 때 기본값을 덮어쓴다.
+- runFlow:
+    file: ../../subflows/devplay_config_start.yaml
 
-# 발급된 사용자 식별자를 로그로 남겨 두면 실패 원인을 추적하기 쉬워진다.
-- evalScript: ${console.log("게스트 로그인 성공, 환경=" + SDK_ENV)}
+# 나이 입력과 약관 동의를 거쳐 시작하기까지 진행한다.
+- runFlow:
+    file: ../../subflows/devplay_first_run_consent.yaml
 
-- takeScreenshot: guest_login_success
+# IDP 로그인 창이 뜨기를 기다린 뒤, 시나리오가 요구하는 다섯 항목이 모두 있는지 확인한다.
+- extendedWaitUntil:
+    visible: "게스트로 로그인"
+    timeout: 60000
+- assertVisible: "Google로 로그인"
+- assertVisible: "Apple로 로그인"
+- assertVisible: "Facebook으로 로그인"
+- assertVisible: "이메일로 로그인"
+- takeScreenshot: guest_login_idp_list
+
+- tapOn:
+    id: "signin_guest"
+    label: 게스트로 로그인 선택
+
+- extendedWaitUntil:
+    visible: "게스트 로그인 주의사항"
+    timeout: 20000
+- assertVisible: "게스트로 진행"
+- assertVisible: "계정 연동"
+
+# 오른쪽의 계정 연동이 아니라 왼쪽의 게스트로 진행을 눌러야 한다.
+- tapOn:
+    id: "btn_guest_ok"
+    label: 게스트로 진행 선택
+
+# 주의사항 창과 IDP 로그인 창이 모두 사라지면 로그인이 완료되어 게임으로 넘어간 것이다.
+# 로비 화면은 Unity 로 그려져서 뷰 계층으로는 내용을 확인할 수 없으므로, 로그인 UI 가
+# 사라졌는지와 게임 렌더링 표면이 남아 있는지까지를 뷰 계층으로 검증한다.
+- extendedWaitUntil:
+    notVisible: "게스트 로그인 주의사항"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "게스트로 로그인"
+    timeout: 30000
+- assertVisible:
+    id: ${APP_ID}:id/unitySurfaceView
+    label: 게임 렌더링 표면이 전면에 있는지 확인
+
+- waitForAnimationToEnd:
+    timeout: 20000
+- takeScreenshot: guest_login_lobby
+
+# 로비에 진입했는지는 화면을 읽어야 판별할 수 있다. AI_ASSERT 를 켰을 때만 검증한다.
+- runFlow:
+    when:
+      true: ${AI_ASSERT == "true"}
+    commands:
+      - assertWithAI:
+          assertion: "게임 로비 화면이며, 좌측 상단에 'Lobby' 라고 표시되어 있고 우측 상단에 'MID:' 로 시작하는 계정 식별자가 표시되어 있다."
+          optional: false

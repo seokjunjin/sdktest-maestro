@@ -11,4 +11,9 @@ env:
     commands:
       - clearState
 
-- launchApp
+# Maestro 는 앱을 실행할 때 런타임 권한을 자동으로 허용한다. 그래서 알림 권한 요청
+# 대화상자가 표시되지 않으며, 사용자 시나리오의 해당 단계는 자동화 대상에서 빠진다.
+# 아래 설정은 그 동작에 의존하지 않고 허용 상태를 명시해 두기 위한 것이다.
+- launchApp:
+    permissions:
+      notifications: allow
