@@ -46,7 +46,7 @@ env:
 - tapOn:
     point: "62%,17%"
     retryTapIfNoChange: false
-    label: Environment 드롭다운 열기
+    label: "[시나리오] Environment 에서 QA를 선택한다"
 - waitForAnimationToEnd:
     timeout: 3000
 
@@ -60,14 +60,14 @@ env:
 - tapOn:
     point: "37%,23%"
     retryTapIfNoChange: false
-    label: Reception Server Type 의 체크를 해제해 Clone 선택
+    label: "[시나리오] Reception Server Type 항목에서 체크박스의 체크를 해제해 Clone을 선택한다"
 - waitForAnimationToEnd:
     timeout: 3000
 
 - tapOn:
     point: "37%,50%"
     retryTapIfNoChange: false
-    label: CDN Download 의 체크를 해제해 Off 선택
+    label: "[시나리오] CDN Download 항목에서 체크박스의 체크를 해제해 Off를 선택한다"
 - waitForAnimationToEnd:
     timeout: 3000
 
@@ -91,6 +91,7 @@ env:
 # 스크롤 한계까지 밀어 올리면 버튼의 위치가 고정되므로, 그 상태에서 좌표로 누른다.
 - repeat:
     times: 3
+    label: "[시나리오] 앱 최하단의 Start 버튼을 클릭한다"
     commands:
       - swipe:
           start: "50%,85%"

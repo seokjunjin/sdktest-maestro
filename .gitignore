@@ -8,6 +8,12 @@ maestro-report.*
 *.mp4
 screenshots/
 
+# scripts/run.sh 가 실행마다 만드는 결과 폴더 (JUnit 결과, 로그, 스크린샷)
+reports/
+
+# 파이썬 스크립트를 실행할 때 생기는 바이트코드 캐시
+__pycache__/
+
 # 테스트용 앱 바이너리
 *.apk
 *.aab

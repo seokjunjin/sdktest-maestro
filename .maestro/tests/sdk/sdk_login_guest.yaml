@@ -29,6 +29,7 @@ env:
 ---
 - runFlow:
     file: ../../subflows/launch_app_fresh.yaml
+    label: "[시나리오] 앱을 시작한다"
     env:
       CLEAR_STATE: "true"
 
@@ -51,6 +52,7 @@ env:
 - extendedWaitUntil:
     visible: "게스트로 로그인"
     timeout: 60000
+    label: "[시나리오] IDP 로그인 창이 출력되며 다음 5개의 선택 가능한 항목이 표시된다"
 - assertVisible: "Google로 로그인"
 - assertVisible: "Apple로 로그인"
 - assertVisible: "Facebook으로 로그인"
@@ -59,18 +61,19 @@ env:
 
 - tapOn:
     id: "signin_guest"
-    label: 게스트로 로그인 선택
+    label: "[시나리오] 게스트로 로그인을 선택한다"
 
 - extendedWaitUntil:
     visible: "게스트 로그인 주의사항"
     timeout: 20000
+    label: "[시나리오] 게스트 로그인 주의사항 창이 표시된다"
 - assertVisible: "게스트로 진행"
 - assertVisible: "계정 연동"
 
 # 오른쪽의 계정 연동이 아니라 왼쪽의 게스트로 진행을 눌러야 한다.
 - tapOn:
     id: "btn_guest_ok"
-    label: 게스트로 진행 선택
+    label: "[시나리오] '게스트로 진행'을 선택한다"
 
 # 주의사항 창과 IDP 로그인 창이 모두 사라지면 로그인이 완료되어 게임으로 넘어간 것이다.
 # 로비 화면은 Unity 로 그려져서 뷰 계층으로는 내용을 확인할 수 없으므로, 로그인 UI 가
@@ -78,6 +81,7 @@ env:
 - extendedWaitUntil:
     notVisible: "게스트 로그인 주의사항"
     timeout: 30000
+    label: "[시나리오] 게임으로 정상 진입한다"
 - extendedWaitUntil:
     notVisible: "게스트로 로그인"
     timeout: 30000
