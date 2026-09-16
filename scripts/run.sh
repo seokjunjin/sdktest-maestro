@@ -23,9 +23,10 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 # .env 의 각 항목을 maestro 의 -e 인자로 변환한다. 값이 비어 있는 항목은 건너뛴다.
-# MAESTRO_ 로 시작하는 항목은 플로우에서 참조하는 변수가 아니라 Maestro CLI 자체의 설정이므로,
-# -e 로 넘기는 대신 프로세스 환경 변수로 내보낸다. AI 검증에 쓰이는 MAESTRO_CLOUD_API_KEY 와
-# 스위트 이름을 지정하는 MAESTRO_TEST_SUITE_NAME 이 여기에 해당한다.
+# MAESTRO_ 로 시작하는 항목과 REPORTS_DIR 은 플로우에서 참조하는 변수가 아니라 도구 쪽
+# 설정이므로, -e 로 넘기는 대신 프로세스 환경 변수로 내보낸다. AI 검증에 쓰이는
+# MAESTRO_CLOUD_API_KEY, 스위트 이름을 지정하는 MAESTRO_TEST_SUITE_NAME, 결과를 둘 위치를
+# 정하는 REPORTS_DIR 이 여기에 해당한다.
 ENV_ARGS=()
 APP_ID_VALUE=""
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -33,7 +34,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   key="${line%%=*}"
   value="${line#*=}"
   [[ -z "$key" || -z "$value" ]] && continue
-  if [[ "$key" == MAESTRO_* ]]; then
+  if [[ "$key" == MAESTRO_* || "$key" == "REPORTS_DIR" ]]; then
     export "$key=$value"
     continue
   fi
@@ -53,9 +54,15 @@ else
   TARGET="$REPO_ROOT/.maestro"
 fi
 
-# 실행마다 reports/<시각>/ 을 만들어 JUnit 결과와 증적을 한곳에 모은다. 이 폴더는 커밋
-# 대상이 아니며, 결과 페이지가 이 경로를 증적 링크로 참조한다.
-RUN_DIR="$REPO_ROOT/reports/$(date +%Y-%m-%d_%H%M%S)"
+# 결과를 둘 위치는 .env 의 REPORTS_DIR 로 정한다. 값이 없으면 저장소 안의 reports/ 를
+# 쓴다. 여러 사람이 결과를 모으려면 결과 전용 저장소를 받은 경로를 넣으면 된다.
+REPORTS_DIR="${REPORTS_DIR:-$REPO_ROOT/reports}"
+# ~ 나 $HOME 이 들어 있을 수 있으므로 펼친다.
+REPORTS_DIR="$(eval echo "$REPORTS_DIR")"
+
+# 실행마다 <시각>-<사용자>/ 를 만들어 JUnit 결과와 증적을 한곳에 모은다. 사용자 이름을
+# 붙이는 이유는 여러 사람이 결과를 한 저장소에 모을 때 폴더가 겹치지 않게 하기 위한 것이다.
+RUN_DIR="$REPORTS_DIR/$(date +%Y-%m-%d_%H%M%S)-$(id -un)"
 JUNIT_XML="$RUN_DIR/junit.xml"
 mkdir -p "$RUN_DIR"
 
@@ -100,8 +107,9 @@ maestro test \
 
 # 결과 페이지를 다시 만든다. 이 페이지는 reports/ 에 쌓인 모든 실행을 함께 보여주므로,
 # 실행마다 갱신해야 최신 결과가 반영된다. 페이지 생성이 실패해도 종료 코드는 유지한다.
-python3 "$REPO_ROOT/scripts/build-report-page.py" ||
+python3 "$REPO_ROOT/scripts/build-report-page.py" --reports-dir "$REPORTS_DIR" ||
   echo "결과 페이지를 만들지 못했습니다. 테스트 결과는 위의 출력을 확인해 주세요." >&2
 
 echo "이번 실행의 결과와 증적은 $RUN_DIR 에 있습니다."
+echo "결과 페이지: $REPORTS_DIR/index.html"
 exit $MAESTRO_STATUS

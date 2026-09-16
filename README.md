@@ -51,6 +51,31 @@ maestro studio
 
 **검증한 앱 버전과 기기 모델명도 함께 기록합니다.** JUnit 결과에는 앱 버전이 없고, Maestro 가 적는 `device` 속성은 adb 시리얼 번호(예: `R3KL205L26F`)라서 기종을 알 수 없습니다. 그래서 `scripts/run.sh` 가 테스트를 시작하기 전에 `adb` 로 조회해 `meta.json` 에 남기고 결과 페이지가 그 값을 읽습니다. 안드로이드 전용이며, `adb` 가 없거나 기기가 여러 대여서 대상이 정해지지 않으면 버전 칸은 비워지고 기기 칸에는 시리얼 번호가 표시됩니다.
 
+## 여러 사람의 결과를 한곳에 모으기
+
+`reports/` 는 기본적으로 각자의 컴퓨터에만 쌓입니다. 여러 사람의 실행을 한 페이지에서 비교하려면 **결과 전용 비공개 저장소**를 함께 씁니다.
+
+```bash
+# 1. 결과 저장소를 받습니다
+git clone https://github.com/devsisters/sdktest-maestro-reports.git ~/sdktest-maestro-reports
+
+# 2. .env 에 그 경로를 지정합니다
+echo 'REPORTS_DIR=$HOME/sdktest-maestro-reports' >> .env
+
+# 3. 평소처럼 실행하면 결과가 그 저장소에 쌓입니다
+./scripts/run.sh
+
+# 4. 내 결과를 올리고, 다른 사람 결과를 받아 옵니다
+./scripts/results.sh push
+./scripts/results.sh pull
+```
+
+`REPORTS_DIR` 을 비워 두면 저장소 안의 `reports/` 를 쓰므로, 혼자 쓸 때는 이 설정이 필요하지 않습니다.
+
+실행 폴더 이름은 `실행 시각-사용자` 형태입니다. 여러 사람이 각자의 기기에서 실행해도 폴더가 겹치지 않게 하기 위한 것입니다. **결과 페이지(`index.html`)는 커밋하지 않습니다.** 여러 사람이 동시에 갱신하면 충돌이 생기고, 실행 폴더만 있으면 `./scripts/results.sh pull` 이 언제든 다시 만들어 줍니다.
+
+**결과 저장소는 반드시 비공개로 유지해야 합니다.** 증적 스크린샷에 SDK APIKey 와 내부 게임 엔드포인트가 함께 찍히고, 실패 메시지에는 앱 패키지 이름이 담깁니다.
+
 ## 결과를 웹페이지로 보기
 
 `scripts/run.sh` 는 실행이 끝날 때마다 `reports/index.html` 을 다시 만듭니다. 이 페이지는 `reports/` 에 쌓인 **모든 실행을 한곳에 모아** Test suite 처럼 보여줍니다.
@@ -128,6 +153,7 @@ cd reports && python3 -m http.server 8777 --bind 127.0.0.1
 └── utils/                   플로우에서 사용하는 자바스크립트 헬퍼
 scripts/
 ├── setup.sh                 처음 받은 사람이 실행할 준비를 마치도록 돕는 스크립트
+├── results.sh               결과 전용 저장소와 실행 산출물을 주고받음
 ├── run.sh                   .env 를 주입해서 Maestro 를 실행하고 결과를 기록
 ├── build-report-page.py     실행 결과를 모아 reports/index.html 을 만듦
 ├── junit_results.py         JUnit 결과를 읽는 모듈
