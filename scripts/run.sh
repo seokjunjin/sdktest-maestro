@@ -27,6 +27,7 @@ fi
 # -e 로 넘기는 대신 프로세스 환경 변수로 내보낸다. AI 검증에 쓰이는 MAESTRO_CLOUD_API_KEY 와
 # 스위트 이름을 지정하는 MAESTRO_TEST_SUITE_NAME 이 여기에 해당한다.
 ENV_ARGS=()
+APP_ID_VALUE=""
 while IFS= read -r line || [[ -n "$line" ]]; do
   [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
   key="${line%%=*}"
@@ -36,6 +37,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     export "$key=$value"
     continue
   fi
+  [[ "$key" == "APP_ID" ]] && APP_ID_VALUE="$value"
   ENV_ARGS+=(-e "$key=$value")
 done <"$ENV_FILE"
 
@@ -56,6 +58,25 @@ fi
 RUN_DIR="$REPO_ROOT/reports/$(date +%Y-%m-%d_%H%M%S)"
 JUNIT_XML="$RUN_DIR/junit.xml"
 mkdir -p "$RUN_DIR"
+
+# 테스트 대상 앱의 버전을 기록한다. JUnit 결과에도 commands.json 에도 이 정보가 없어서,
+# 어느 버전을 검증했는지 나중에 확인할 방법이 없기 때문이다. 실행 시점에 읽어 두어야
+# 의미가 있으므로 테스트를 시작하기 전에 조회한다.
+#
+# 안드로이드 전용이다. adb 가 없거나 기기가 여러 대여서 대상이 정해지지 않거나 앱이 설치되어
+# 있지 않으면 조용히 건너뛴다. 결과 페이지는 이 경우 버전 칸을 비워 둔다.
+if command -v adb >/dev/null 2>&1 && [[ -n "$APP_ID_VALUE" ]]; then
+  PKG_DUMP="$(adb shell dumpsys package "$APP_ID_VALUE" 2>/dev/null || true)"
+  APP_VERSION_NAME="$(sed -n 's/.*versionName=\([^ ]*\).*/\1/p' <<<"$PKG_DUMP" | head -1)"
+  APP_VERSION_CODE="$(sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' <<<"$PKG_DUMP" | head -1)"
+  if [[ -n "$APP_VERSION_NAME" || -n "$APP_VERSION_CODE" ]]; then
+    printf '{\n  "app_version_name": "%s",\n  "app_version_code": "%s"\n}\n' \
+      "$APP_VERSION_NAME" "$APP_VERSION_CODE" >"$RUN_DIR/meta.json"
+    echo "테스트 대상 앱 버전: ${APP_VERSION_NAME}(${APP_VERSION_CODE})"
+  else
+    echo "앱 버전을 읽지 못했습니다. 결과 페이지의 버전 칸이 비워집니다." >&2
+  fi
+fi
 
 # 대상 디렉터리 안의 config.yaml 은 Maestro 가 자동으로 인식하므로 --config 를 넘기지 않는다.
 # 테스트가 실패해도 결과를 기록해야 하므로, set -e 로 중단되지 않게 종료 코드를 받아 둔다.

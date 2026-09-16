@@ -60,6 +60,26 @@ def collect_steps(run_dir):
     return steps_by_case
 
 
+def read_app_version(run_dir):
+    """실행 폴더의 meta.json 에서 앱 버전을 읽어 `이름(코드)` 형태로 만든다.
+
+    run.sh 가 테스트를 시작하기 전에 기기에서 조회해 남긴 값이다. 안드로이드가 아니거나
+    조회에 실패한 실행에는 이 파일이 없으므로 빈 문자열을 반환한다.
+    """
+    meta_file = run_dir / "meta.json"
+    if not meta_file.is_file():
+        return ""
+    try:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    name = (meta.get("app_version_name") or "").strip()
+    code = (meta.get("app_version_code") or "").strip()
+    if name and code:
+        return f"{name}({code})"
+    return name or (f"({code})" if code else "")
+
+
 def collect_runs(reports_dir):
     """reports/ 하위에서 junit.xml 을 가진 폴더를 최신 순으로 모은다."""
     runs = []
@@ -78,6 +98,10 @@ def collect_runs(reports_dir):
         steps_by_case = collect_steps(run_dir)
         for case in cases:
             case["steps"] = steps_by_case.get(case["name"], [])
+
+        app_version = read_app_version(run_dir)
+        for case in cases:
+            case["app_version"] = app_version
         runs.append(
             {
                 "id": run_dir.name,
@@ -90,6 +114,7 @@ def collect_runs(reports_dir):
                 "device": next((c["device"] for c in cases if c["device"]), ""),
                 "suite": cases[0]["suite"],
                 "ran_at": next((c["ran_at"] for c in cases if c["ran_at"]), None),
+                "app_version": app_version,
             }
         )
     return runs
@@ -298,7 +323,7 @@ def render_case_rows(runs, scenarios, inline_dir=None):
         <td>{status_chip(case['status'])}</td>
         <td class="case__name"><div>{html.escape(case['name'])}</div>
             <div class="path">{html.escape(case['file'])}</div>{reason}{steps}</td>
-        <td>{tags or '<span class="muted">없음</span>'}</td>
+        <td class="ver">{html.escape(case['app_version']) or '<span class="muted">알 수 없음</span>'}</td>
         <td class="num">{case['duration']:.1f}s</td>
         <td class="num">{html.escape(format_time(case['ran_at']))}</td>
       </tr>"""
@@ -316,6 +341,7 @@ def render_run_rows(runs):
         <td>{html.escape(run['suite'])}<div class="path">{html.escape(run['id'])}</div></td>
         <td class="num">{run['passed']} / {len(run['cases'])}</td>
         <td class="num">{run['duration']:.1f}s</td>
+        <td class="ver">{html.escape(run['app_version']) or '<span class="muted">알 수 없음</span>'}</td>
         <td>{html.escape(run['device'] or '알 수 없음')}</td>
         <td class="num">{html.escape(format_time(run['ran_at']))}</td>
       </tr>"""
@@ -415,6 +441,7 @@ STYLE = """
     th.sortable { cursor: pointer; user-select: none; }
     th.sortable:hover { color: var(--text-primary); }
     td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    td.ver { font-variant-numeric: tabular-nums; white-space: nowrap; }
     .case__name div:first-child { font-weight: 550; }
     .path { color: var(--text-muted); font-size: 12px; word-break: break-all; }
     .reason { margin-top: 4px; color: var(--text-secondary); font-size: 12px; }
@@ -676,7 +703,7 @@ def render_page(runs, generated_at, scenarios, inline_dir=None):
       <tr>
         <th>상태</th>
         <th>케이스</th>
-        <th>태그</th>
+        <th>앱 버전</th>
         <th class="num sortable" data-key="duration">소요 시간</th>
         <th class="num sortable" data-key="ranAt">실행 시각</th>
       </tr>
@@ -694,6 +721,7 @@ def render_page(runs, generated_at, scenarios, inline_dir=None):
         <th>스위트</th>
         <th class="num">통과 / 전체</th>
         <th class="num">소요 시간</th>
+        <th>앱 버전</th>
         <th>기기</th>
         <th class="num">실행 시각</th>
       </tr>
