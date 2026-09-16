@@ -44,7 +44,7 @@ env:                      # 선택. 이 플로우에서만 사용하는 환경 �
 같은 플래그 안에 여러 태그를 나열하면 OR 조건으로 동작하고, `--include-tags` 와 `--exclude-tags` 를 함께 쓰면 두 그룹 사이에는 AND 조건이 적용됩니다.
 
 ```bash
-./scripts/run.sh .maestro --include-tags=smoke,sdk
+./scripts/run.sh .maestro --include-tags=sdk,login
 ./scripts/run.sh .maestro --include-tags=sdk --exclude-tags=login
 ```
 

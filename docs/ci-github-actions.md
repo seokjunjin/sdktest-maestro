@@ -46,7 +46,7 @@ jobs:
           disable-animations: true
           script: |
             adb install -r ./builds/app.apk
-            maestro test -e APP_ID=${{ secrets.APP_ID }} .maestro --include-tags=smoke
+            maestro test -e APP_ID=${{ secrets.APP_ID }} .maestro --include-tags=sdk
 
       - name: 실패 시 산출물 업로드
         if: failure()

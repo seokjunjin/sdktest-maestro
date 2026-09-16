@@ -23,7 +23,7 @@ Maestro YAML 플로우로 SDK 의 앱 내부 흐름을 검증하는 저장소입
 ```bash
 ./scripts/doctor.sh                             # 실행 전 사전 조건 점검
 ./scripts/run.sh                                # 전체 실행
-./scripts/run.sh .maestro --include-tags=smoke   # 태그 필터링
+./scripts/run.sh .maestro --include-tags=login   # 태그 필터링
 maestro studio                                  # 화면 요소 탐색용 GUI
 ```
 
