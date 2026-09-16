@@ -26,7 +26,7 @@ fi
 # MAESTRO_ 로 시작하는 항목과 REPORTS_DIR 은 플로우에서 참조하는 변수가 아니라 도구 쪽
 # 설정이므로, -e 로 넘기는 대신 프로세스 환경 변수로 내보낸다. AI 검증에 쓰이는
 # MAESTRO_CLOUD_API_KEY, 스위트 이름을 지정하는 MAESTRO_TEST_SUITE_NAME, 결과를 둘 위치를
-# 정하는 REPORTS_DIR 이 여기에 해당한다.
+# 정하는 REPORTS_DIR, 공유 링크를 가리키는 SHARE_SLUG 가 여기에 해당한다.
 ENV_ARGS=()
 APP_ID_VALUE=""
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -34,7 +34,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   key="${line%%=*}"
   value="${line#*=}"
   [[ -z "$key" || -z "$value" ]] && continue
-  if [[ "$key" == MAESTRO_* || "$key" == "REPORTS_DIR" ]]; then
+  if [[ "$key" == MAESTRO_* || "$key" == "REPORTS_DIR" || "$key" == "SHARE_SLUG" ]]; then
     export "$key=$value"
     continue
   fi

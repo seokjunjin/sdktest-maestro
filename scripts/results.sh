@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # 결과 전용 저장소와 실행 산출물을 주고받는다.
 #
-#   ./scripts/results.sh pull     다른 사람이 올린 결과까지 받아 온다
-#   ./scripts/results.sh push     내 실행 결과를 올린다
+#   ./scripts/results.sh pull      다른 사람이 올린 결과까지 받아 온다
+#   ./scripts/results.sh push      내 실행 결과를 올린다
+#   ./scripts/results.sh publish   전체 결과를 사내 공유 링크에 올린다
 #   ./scripts/results.sh status    현재 연결 상태와 올리지 않은 실행을 보여준다
 #
 # 결과를 두는 위치는 .env 의 REPORTS_DIR 로 정한다. 값이 없으면 저장소 안의 reports/ 를
@@ -45,6 +46,19 @@ git_in_reports() {
   git -C "$REPORTS_DIR" -c credential.helper='!gh auth git-credential' "$@"
 }
 
+# pantry 는 PATH 를 초기화하는 셸에서 보이지 않을 수 있으므로 알려진 경로도 살펴본다.
+find_pantry() {
+  if command -v pantry >/dev/null 2>&1; then
+    command -v pantry
+    return 0
+  fi
+  local candidate
+  for candidate in "$HOME/.local/bin/pantry" /opt/homebrew/bin/pantry /usr/local/bin/pantry; do
+    [[ -x "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+  done
+  return 1
+}
+
 case "${1:-}" in
   pull)
     echo "결과를 받아 옵니다: $REPORTS_DIR"
@@ -81,6 +95,64 @@ case "${1:-}" in
     echo "올렸습니다: $added"
     ;;
 
+  publish)
+    PANTRY_BIN="$(find_pantry)" || {
+      echo "pantry 를 찾을 수 없습니다. 사내 공유 링크에 올리려면 필요합니다." >&2
+      echo "  설치 안내: https://app.teamdev.ai/cli" >&2
+      exit 1
+    }
+    if ! "$PANTRY_BIN" whoami >/dev/null 2>&1; then
+      echo "teamdev.ai 에 로그인되어 있지 않습니다. 아래 명령으로 로그인한 뒤 다시 실행해 주세요." >&2
+      echo "  $PANTRY_BIN login" >&2
+      exit 1
+    fi
+
+    # 링크에는 전체 이력이 담겨야 하므로 다른 사람 결과까지 먼저 받아 온다.
+    git_in_reports pull --quiet --rebase || {
+      echo "다른 사람의 결과를 받아 오지 못했습니다. 먼저 해결해 주세요." >&2
+      exit 1
+    }
+
+    # 파일 이름이 공유 화면의 목록에 그대로 보이므로 읽을 수 있는 이름을 쓴다.
+    STAGING="$(mktemp -d)"
+    SHARE_FILE="$STAGING/sdk-test-report.html"
+    python3 "$REPO_ROOT/scripts/build-report-page.py" \
+      --reports-dir "$REPORTS_DIR" --standalone "$SHARE_FILE" || {
+      echo "공유용 파일을 만들지 못했습니다." >&2
+      rm -rf "$STAGING"
+      exit 1
+    }
+
+    SHARE_SLUG="$(env_value SHARE_SLUG)"
+    if [[ -n "$SHARE_SLUG" ]]; then
+      PUSH_OUTPUT="$("$PANTRY_BIN" artifact push "$SHARE_FILE" --slug "$SHARE_SLUG" 2>&1)"
+    else
+      echo "SHARE_SLUG 이 없어 새 공유 링크를 만듭니다."
+      PUSH_OUTPUT="$("$PANTRY_BIN" artifact push "$SHARE_FILE" 2>&1)"
+    fi
+    PUSH_STATUS=$?
+    rm -rf "$STAGING"
+
+    if [[ $PUSH_STATUS -ne 0 ]]; then
+      echo "공유 링크에 올리지 못했습니다." >&2
+      echo "$PUSH_OUTPUT" >&2
+      echo >&2
+      echo "아티팩트는 올린 사람의 계정에 귀속됩니다. 다른 사람이 만든 링크에는 올릴 수 없으므로," >&2
+      echo "SHARE_SLUG 를 비우고 다시 실행하면 자기 계정 아래에 새 링크가 만들어집니다." >&2
+      exit 1
+    fi
+
+    echo "$PUSH_OUTPUT"
+    if [[ -z "$SHARE_SLUG" ]]; then
+      NEW_SLUG="$(sed -n 's/^slug \([^ ]*\).*/\1/p' <<<"$PUSH_OUTPUT" | head -1)"
+      if [[ -n "$NEW_SLUG" ]]; then
+        echo
+        echo "다음부터 같은 링크에 올리려면 아래 한 줄을 .env 에 넣어 주세요."
+        echo "  SHARE_SLUG=$NEW_SLUG"
+      fi
+    fi
+    ;;
+
   status | "")
     echo "결과 위치: $REPORTS_DIR"
     echo "원격: $(git -C "$REPORTS_DIR" remote get-url origin 2>/dev/null || echo '없음')"
@@ -92,11 +164,17 @@ case "${1:-}" in
     else
       echo "올리지 않은 변경이 없습니다."
     fi
+    share_slug="$(env_value SHARE_SLUG)"
+    if [[ -n "$share_slug" ]]; then
+      echo "공유 링크 slug: $share_slug"
+    else
+      echo "공유 링크 slug 가 설정되어 있지 않습니다. publish 를 실행하면 새로 만들어집니다."
+    fi
     ;;
 
   *)
     echo "알 수 없는 명령입니다: $1" >&2
-    sed -n '3,6p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '4,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
     exit 1
     ;;
 esac

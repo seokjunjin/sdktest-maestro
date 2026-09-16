@@ -68,7 +68,12 @@ echo 'REPORTS_DIR=$HOME/sdktest-maestro-reports' >> .env
 # 4. 내 결과를 올리고, 다른 사람 결과를 받아 옵니다
 ./scripts/results.sh push
 ./scripts/results.sh pull
+
+# 5. 전체 결과를 사내 공유 링크에 올립니다
+./scripts/results.sh publish
 ```
+
+`publish` 는 다른 사람 결과까지 받아 온 뒤 단일 HTML 파일을 만들어 `a.teamdev.ai` 에 올립니다. 올릴 링크는 `.env` 의 `SHARE_SLUG` 로 정하고, 비워 두고 실행하면 새 링크를 만든 뒤 넣을 값을 알려 줍니다. **아티팩트는 올린 사람의 계정에 귀속되므로 다른 사람이 만든 링크에는 올릴 수 없습니다.** 팀에서 링크를 하나로 유지하려면 한 사람이 `publish` 를 담당하면 됩니다.
 
 `REPORTS_DIR` 을 비워 두면 저장소 안의 `reports/` 를 쓰므로, 혼자 쓸 때는 이 설정이 필요하지 않습니다.
 
