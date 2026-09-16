@@ -735,10 +735,16 @@ def render_page(runs, generated_at, scenarios, inline=None):
         latest_value, latest_note = "기록 없음", "아직 실행 결과가 없습니다."
     elif latest["failed"] == 0:
         latest_value = "전체 통과"
-        latest_note = f"{format_time(latest['ran_at'])} · {latest['device'] or '기기 정보 없음'}"
+        latest_note = (
+            f"{format_time(latest['ran_at'])} · "
+            f"{latest['device_label'] or '기기 정보 없음'}"
+        )
     else:
         latest_value = f"실패 {latest['failed']}건"
-        latest_note = f"{format_time(latest['ran_at'])} · {latest['device'] or '기기 정보 없음'}"
+        latest_note = (
+            f"{format_time(latest['ran_at'])} · "
+            f"{latest['device_label'] or '기기 정보 없음'}"
+        )
 
     all_tags = sorted({t for r in runs for c in r["cases"] for t in c["tags"]})
     tag_options = "".join(
