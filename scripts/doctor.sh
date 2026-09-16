@@ -38,7 +38,34 @@ fi
 
 echo "4. 안드로이드 adb"
 if command -v adb >/dev/null 2>&1; then
-  ok "$(adb devices | tail -n +2 | grep -c 'device$') 대의 안드로이드 기기가 연결되어 있습니다."
+  # adb devices 의 각 줄은 "시리얼<탭>상태" 두 열로 출력된다. 상태가 device 인 기기만 실제로
+  # 테스트에 사용할 수 있고, unauthorized 나 offline 상태의 기기는 Maestro 가 목록에 올리지
+  # 못한다. 따라서 상태별로 개수를 세어 원인에 맞는 안내를 내보낸다.
+  # 데몬 기동 메시지("* daemon not running; ...")는 열이 두 개가 아니므로 NF == 2 로 걸러진다.
+  ADB_STATES="$(adb devices 2>/dev/null | tail -n +2 | awk 'NF == 2 {print $2}')"
+  ADB_READY="$(grep -cx 'device' <<<"$ADB_STATES")"
+  ADB_UNAUTHORIZED="$(grep -cx 'unauthorized' <<<"$ADB_STATES")"
+  ADB_OFFLINE="$(grep -cx 'offline' <<<"$ADB_STATES")"
+
+  if [[ "$ADB_READY" -gt 0 ]]; then
+    ok "$ADB_READY 대의 안드로이드 기기를 테스트에 사용할 수 있습니다."
+    if [[ "$ADB_UNAUTHORIZED" -gt 0 || "$ADB_OFFLINE" -gt 0 ]]; then
+      echo "  [참고] 이와 별개로 unauthorized $ADB_UNAUTHORIZED 대, offline $ADB_OFFLINE 대가 연결되어 있습니다."
+      echo "         특정 기기에서 실행하려면 maestro test --device <시리얼> 로 대상을 지정해 주세요."
+    fi
+  elif [[ "$ADB_UNAUTHORIZED" -gt 0 ]]; then
+    fail "연결된 안드로이드 기기 $ADB_UNAUTHORIZED 대가 모두 unauthorized 상태여서 사용할 수 없습니다."
+    echo "         기기 화면에 표시된 USB 디버깅 허용 대화상자에서 [허용] 을 눌러 주세요."
+    echo "         화면이 잠겨 있으면 대화상자가 표시되지 않으므로 잠금을 먼저 해제해야 합니다."
+    echo "         대화상자가 보이지 않으면 adb kill-server 를 실행한 뒤 다시 연결해 주세요."
+  elif [[ "$ADB_OFFLINE" -gt 0 ]]; then
+    fail "연결된 안드로이드 기기 $ADB_OFFLINE 대가 모두 offline 상태여서 사용할 수 없습니다."
+    echo "         USB 케이블을 다시 연결하거나 adb kill-server 를 실행해 주세요."
+  else
+    fail "테스트에 사용할 수 있는 안드로이드 기기가 없습니다."
+    echo "         실기기는 USB 로 연결한 뒤 개발자 옵션에서 USB 디버깅을 켜 주세요."
+    echo "         에뮬레이터는 maestro start-device --platform android 로 실행할 수 있습니다."
+  fi
 else
   echo "  [참고] adb 가 없습니다. 안드로이드를 테스트하지 않는다면 무시해도 됩니다."
 fi
