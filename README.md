@@ -13,21 +13,21 @@ Claude Code 에서는 Maestro MCP 서버를 통해 기기 화면을 직접 조�
 ## 최초 설정
 
 ```bash
-# 1. Maestro CLI 설치 (이미 설치되어 있다면 건너뜁니다)
-curl -fsSL "https://get.maestro.mobile.dev" | bash
-export PATH="$PATH:$HOME/.maestro/bin"
+# 1. 필요한 도구를 확인하고 .env 를 만듭니다
+./scripts/setup.sh
 
-# 2. 환경 변수 파일 준비 후 APP_ID 등을 채웁니다
-cp .env.example .env
-
-# 3. Claude Code 에 Maestro MCP 서버를 등록합니다
+# 2. Claude Code 에서 플로우를 작성하려면 Maestro MCP 서버를 등록합니다 (선택)
 claude mcp add maestro -- maestro mcp
 
-# 4. 사전 조건을 점검합니다
+# 3. 기기를 연결한 뒤 사전 조건을 점검합니다
 ./scripts/doctor.sh
 ```
 
-`.env` 는 커밋되지 않습니다. 대상 앱의 패키지 이름과 테스트 계정 정보는 이 파일에만 두고, 플로우 YAML 에는 `${APP_ID}` 처럼 환경 변수로 참조합니다.
+`setup.sh` 는 Maestro CLI 가 없으면 홈 디렉터리에 설치하고, Java 와 `adb` 는 설치 명령을 안내하며, `.env` 가 없으면 필요한 값을 물어서 만들어 줍니다. 값을 미리 알고 있다면 `./scripts/setup.sh --app-id <패키지 이름> --sdk-env qa` 처럼 인자로 넘길 수 있습니다.
+
+**이 저장소를 처음 받은 분은 [docs/onboarding.md](docs/onboarding.md) 를 먼저 읽어 주세요.** 기기 준비와 앱 설치, 결과 확인까지의 과정과 자주 막히는 지점을 정리해 두었습니다.
+
+`.env` 는 커밋되지 않습니다. 대상 앱의 패키지 이름은 이 파일에만 두고, 플로우 YAML 에는 `${APP_ID}` 처럼 환경 변수로 참조합니다.
 
 대상 앱이 Unity 로 렌더링되는 화면을 가지고 있다면 `.env` 의 `MAESTRO_CLOUD_API_KEY` 도 채워야 합니다. 자세한 이유는 아래 [Unity 화면을 검증하는 방법](#unity-화면을-검증하는-방법)에 적었습니다.
 
@@ -127,6 +127,7 @@ cd reports && python3 -m http.server 8777 --bind 127.0.0.1
 ├── scenarios/               QA 시나리오 원문 (결과 페이지의 단계 목록 기준)
 └── utils/                   플로우에서 사용하는 자바스크립트 헬퍼
 scripts/
+├── setup.sh                 처음 받은 사람이 실행할 준비를 마치도록 돕는 스크립트
 ├── run.sh                   .env 를 주입해서 Maestro 를 실행하고 결과를 기록
 ├── build-report-page.py     실행 결과를 모아 reports/index.html 을 만듦
 ├── junit_results.py         JUnit 결과를 읽는 모듈
@@ -135,6 +136,7 @@ scripts/
 └── doctor.sh                실행 전 사전 조건 점검
 reports/                     실행마다 만들어지는 결과 폴더와 결과 페이지 (커밋 대상 아님)
 docs/
+├── onboarding.md            처음 실행하는 사람을 위한 안내
 ├── writing-flows.md         플로우 작성 규칙과 자주 쓰는 명령
 └── ci-github-actions.md     깃허브 액션 연동 예시
 ```
