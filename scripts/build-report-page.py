@@ -18,6 +18,7 @@ import base64
 import html
 import json
 import re
+import struct
 import sys
 import webbrowser
 from datetime import datetime
@@ -60,24 +61,32 @@ def collect_steps(run_dir):
     return steps_by_case
 
 
-def read_app_version(run_dir):
-    """실행 폴더의 meta.json 에서 앱 버전을 읽어 `이름(코드)` 형태로 만든다.
+EMPTY_META = {"app_version": "", "device_model": "", "android_release": ""}
 
-    run.sh 가 테스트를 시작하기 전에 기기에서 조회해 남긴 값이다. 안드로이드가 아니거나
-    조회에 실패한 실행에는 이 파일이 없으므로 빈 문자열을 반환한다.
+
+def read_run_meta(run_dir):
+    """실행 폴더의 meta.json 에서 앱 버전과 기기 모델명을 읽는다.
+
+    run.sh 가 테스트를 시작하기 전에 기기에서 조회해 남긴 값이다. Maestro 가 JUnit 에 적는
+    device 속성은 adb 시리얼 번호라서 기종을 알 수 없으므로, 모델명은 이 파일에서 가져온다.
+    안드로이드가 아니거나 조회에 실패한 실행에는 이 파일이 없다.
     """
     meta_file = run_dir / "meta.json"
     if not meta_file.is_file():
-        return ""
+        return dict(EMPTY_META)
     try:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return ""
+        return dict(EMPTY_META)
     name = (meta.get("app_version_name") or "").strip()
     code = (meta.get("app_version_code") or "").strip()
     if name and code:
-        return f"{name}({code})"
-    return name or (f"({code})" if code else "")
+        version = f"{name}({code})"
+    else:
+        version = name or (f"({code})" if code else "")
+    model = (meta.get("device_model") or "").strip()
+    release = (meta.get("android_release") or "").strip()
+    return {"app_version": version, "device_model": model, "android_release": release}
 
 
 def collect_runs(reports_dir):
@@ -99,9 +108,9 @@ def collect_runs(reports_dir):
         for case in cases:
             case["steps"] = steps_by_case.get(case["name"], [])
 
-        app_version = read_app_version(run_dir)
+        meta = read_run_meta(run_dir)
         for case in cases:
-            case["app_version"] = app_version
+            case["app_version"] = meta["app_version"]
         runs.append(
             {
                 "id": run_dir.name,
@@ -114,7 +123,11 @@ def collect_runs(reports_dir):
                 "device": next((c["device"] for c in cases if c["device"]), ""),
                 "suite": cases[0]["suite"],
                 "ran_at": next((c["ran_at"] for c in cases if c["ran_at"]), None),
-                "app_version": app_version,
+                "app_version": meta["app_version"],
+                # 모델명을 못 읽었으면 JUnit 의 시리얼 번호라도 보여준다.
+                "device_label": meta["device_model"]
+                or next((c["device"] for c in cases if c["device"]), ""),
+                "android_release": meta["android_release"],
             }
         )
     return runs
@@ -160,16 +173,58 @@ def format_duration(milliseconds, decimals=1):
     return f"{milliseconds / 1000:.{decimals}f}s"
 
 
-def render_shots(paths, rel_dir, inline_dir):
+class InlineShots:
+    """단일 파일 모드에서 스크린샷을 파일 안에 담되, 같은 이미지는 한 번만 넣는다.
+
+    같은 스크린샷이 케이스별 결과 표와 실행 이력 표 두 곳에 나타나므로, img 태그마다
+    base64 를 박으면 파일 크기가 두 배가 된다. 그래서 이미지마다 CSS 규칙을 하나 만들어
+    두고 여러 요소가 그 규칙을 함께 쓰게 한다. 배경 이미지로 넣기 때문에 원본 비율을
+    유지하려면 크기를 알아야 하므로, PNG 머리표의 IHDR 에서 폭과 높이를 읽는다.
+    """
+
+    def __init__(self, reports_dir):
+        self.root = reports_dir
+        self.index = {}
+        self.rules = []
+
+    def reference(self, rel_dir, path):
+        """이미지를 등록하고 그 이미지를 가리키는 CSS 클래스 번호를 반환한다."""
+        key = (rel_dir, path)
+        if key in self.index:
+            return self.index[key]
+        source = self.root / rel_dir / path
+        try:
+            raw = source.read_bytes()
+        except OSError as error:
+            print(f"  [건너뜀] 스크린샷을 읽을 수 없습니다: {source} ({error})", file=sys.stderr)
+            return None
+        try:
+            width, height = struct.unpack(">II", raw[16:24])
+        except struct.error:
+            width, height = 16, 9
+        number = len(self.index) + 1
+        encoded = base64.b64encode(raw).decode("ascii")
+        self.rules.append(
+            f".shot-img--{number}{{aspect-ratio:{width}/{height};"
+            f"background-image:url(data:image/png;base64,{encoded})}}"
+        )
+        self.index[key] = number
+        return number
+
+    def css(self):
+        return "\n".join(self.rules)
+
+
+def render_shots(paths, rel_dir, inline):
     """스크린샷을 링크 또는 파일에 담은 이미지로 만든다.
 
-    inline_dir 이 주어지면 이미지를 base64 로 읽어 페이지 안에 넣는다. 파일 하나만 전달해도
-    화면이 깨지지 않게 하기 위한 것이다. 링크 대신 접이식 이미지를 쓰는 이유는 브라우저가
-    data: 주소로의 최상위 이동을 막기 때문이다.
+    inline 이 주어지면 이미지를 페이지 안에 담는다. 파일 하나만 전달해도 화면이 깨지지
+    않게 하기 위한 것이다. 링크 대신 접이식 이미지를 쓰는 이유는 브라우저가 data: 주소로의
+    최상위 이동을 막기 때문이다.
     """
     if not paths:
         return ""
-    if inline_dir is None:
+    if inline is None:
         return "".join(
             f'<a class="shot" href="{rel_dir}/{html.escape(path)}">스크린샷</a>'
             for path in paths
@@ -177,27 +232,25 @@ def render_shots(paths, rel_dir, inline_dir):
 
     blocks = []
     for path in paths:
-        source = inline_dir / rel_dir / path
-        try:
-            encoded = base64.b64encode(source.read_bytes()).decode("ascii")
-        except OSError as error:
-            print(f"  [건너뜀] 스크린샷을 읽을 수 없습니다: {source} ({error})", file=sys.stderr)
+        number = inline.reference(rel_dir, path)
+        if number is None:
             continue
         name = html.escape(Path(path).name)
         blocks.append(
             f'<details class="shot-box"><summary>스크린샷 {name}</summary>'
-            f'<img alt="{name}" src="data:image/png;base64,{encoded}"></details>'
+            f'<div class="shot-img shot-img--{number}" role="img" aria-label="{name}"></div>'
+            "</details>"
         )
     return "".join(blocks)
 
 
-def render_commands(commands, rel_dir, inline_dir=None):
+def render_commands(commands, rel_dir, inline=None):
     """시나리오 단계 하나가 실제로 실행한 Maestro 명령들을 접은 목록으로 만든다."""
     if not commands:
         return ""
     lines = []
     for command in commands:
-        shots = render_shots(command["screenshots"], rel_dir, inline_dir)
+        shots = render_shots(command["screenshots"], rel_dir, inline)
         lines.append(
             f"""            <li class="cmd cmd--{command['slug']}" style="--depth: {min(command['depth'], 4)}">
               <span class="cmd__icon" aria-hidden="true">{STEP_ICON.get(command['slug'], '?')}</span>
@@ -214,7 +267,7 @@ def render_commands(commands, rel_dir, inline_dir=None):
     )
 
 
-def render_scenario(scenario, commands, rel_dir, inline_dir=None):
+def render_scenario(scenario, commands, rel_dir, inline=None, wrap=True):
     """시나리오 단계를 기준으로 케이스의 진행 내역을 만든다.
 
     Maestro 명령을 그대로 늘어놓으면 변수 정의나 설정 적용 같은 내부 동작이 섞여서 무엇을
@@ -266,7 +319,7 @@ def render_scenario(scenario, commands, rel_dir, inline_dir=None):
               <span class="sstep__kw">{html.escape(step['keyword'])}</span>
               <span class="sstep__text">{html.escape(step['text'])}</span>{badge}
               {examples}{note}
-              {render_commands(step['commands'], rel_dir, inline_dir)}
+              {render_commands(step['commands'], rel_dir, inline)}
             </span>
             <span class="sstep__meta">{timing}<span class="sep"> · </span>{html.escape(step['status'])}</span>
           </li>"""
@@ -280,18 +333,20 @@ def render_scenario(scenario, commands, rel_dir, inline_dir=None):
             f"아래 라벨을 확인해 주세요.<ul>{items}</ul></div>"
         )
 
+    body = warning + '<ol class="sstep-list">\n' + "\n".join(lines) + "\n</ol>"
+    if not wrap:
+        # 실행 이력 표에서는 케이스마다 제목을 따로 붙이므로 감싸지 않고 본문만 넘긴다.
+        return body, summary, orphans
     return (
         '<details class="steps"><summary>'
         + html.escape(summary)
         + "</summary>\n"
-        + warning
-        + '        <ol class="sstep-list">\n'
-        + "\n".join(lines)
-        + "\n        </ol></details>"
-    ), orphans
+        + body
+        + "</details>"
+    ), summary, orphans
 
 
-def render_case_rows(runs, scenarios, inline_dir=None):
+def render_case_rows(runs, scenarios, inline=None):
     rows = []
     warnings = []
     for run in runs:
@@ -308,13 +363,15 @@ def render_case_rows(runs, scenarios, inline_dir=None):
             commands = case.get("steps") or []
             scenario = scenarios.get(case["file"])
             if scenario and commands:
-                steps, orphans = render_scenario(scenario, commands, rel_dir, inline_dir)
+                steps, _, orphans = render_scenario(
+                    scenario, commands, rel_dir, inline
+                )
                 warnings.extend(
                     f"{case['name']}: 라벨 '{t}' 이(가) 시나리오에 없습니다." for t in orphans
                 )
             else:
                 # 시나리오가 없는 케이스는 실행한 명령을 그대로 보여준다.
-                steps = render_commands(commands, rel_dir, inline_dir)
+                steps = render_commands(commands, rel_dir, inline)
             rows.append(
                 f"""      <tr class="case" data-status="{STATUS_META.get(case['status'], {}).get('slug', 'skipped')}"
           data-tags="{html.escape(' '.join(case['tags']))}"
@@ -331,18 +388,63 @@ def render_case_rows(runs, scenarios, inline_dir=None):
     return "\n".join(rows), warnings
 
 
-def render_run_rows(runs):
+def render_run_detail(run, scenarios, inline):
+    """실행 하나에 속한 케이스들의 시나리오 단계를 접은 블록으로 만든다.
+
+    이력에서 바로 펼쳐 이전 실행과 비교할 수 있게 하기 위한 것이다. 케이스별 결과 표와
+    같은 내용이지만, 스크린샷은 InlineShots 가 한 번만 담으므로 파일이 두 배가 되지 않는다.
+    """
+    blocks = []
+    totals = []
+    for case in run["cases"]:
+        commands = case.get("steps") or []
+        scenario = scenarios.get(case["file"])
+        head = (
+            f'<div class="case-head">{status_chip(case["status"])}'
+            f'<span class="case-head__name">{html.escape(case["name"])}</span>'
+            f'<span class="path">{html.escape(case["file"])}</span></div>'
+        )
+        if scenario and commands:
+            body, summary, _ = render_scenario(
+                scenario, commands, html.escape(run["id"]), inline, wrap=False
+            )
+            totals.append(summary)
+        elif commands:
+            body = render_commands(commands, html.escape(run["id"]), inline)
+        else:
+            body = '<div class="note">기록된 단계가 없습니다.</div>'
+        blocks.append(f'<div class="case-block">{head}{body}</div>')
+
+    if not blocks:
+        return ""
+    label = f"케이스 {len(run['cases'])} 개의 진행 내역"
+    if totals:
+        label += f" · {totals[0]}"
+    return (
+        '<details class="steps"><summary>'
+        + html.escape(label)
+        + "</summary>"
+        + "".join(blocks)
+        + "</details>"
+    )
+
+
+def render_run_rows(runs, scenarios, inline=None):
     rows = []
     for run in runs:
         verdict = STATUS_PASSED if run["failed"] == 0 else STATUS_FAILED
+        device = html.escape(run["device_label"]) or '<span class="muted">알 수 없음</span>'
+        if run["android_release"]:
+            device += f'<div class="path">Android {html.escape(run["android_release"])}</div>'
         rows.append(
             f"""      <tr>
         <td>{status_chip(verdict)}</td>
-        <td>{html.escape(run['suite'])}<div class="path">{html.escape(run['id'])}</div></td>
+        <td>{html.escape(run['suite'])}<div class="path">{html.escape(run['id'])}</div>
+            {render_run_detail(run, scenarios, inline)}</td>
         <td class="num">{run['passed']} / {len(run['cases'])}</td>
         <td class="num">{run['duration']:.1f}s</td>
         <td class="ver">{html.escape(run['app_version']) or '<span class="muted">알 수 없음</span>'}</td>
-        <td>{html.escape(run['device'] or '알 수 없음')}</td>
+        <td>{device}</td>
         <td class="num">{html.escape(format_time(run['ran_at']))}</td>
       </tr>"""
         )
@@ -545,10 +647,17 @@ STYLE = """
     .shot-box { display: inline-block; margin-left: 8px; vertical-align: top; }
     .shot-box > summary { cursor: pointer; color: var(--text-secondary); white-space: nowrap; }
     .shot-box > summary:hover { color: var(--text-primary); }
-    .shot-box img {
-      display: block; max-width: 100%; margin: 6px 0;
+    .shot-img {
+      display: block; width: 100%; max-width: 560px; margin: 6px 0;
+      background-size: contain; background-repeat: no-repeat; background-position: top left;
       border: 1px solid var(--border); border-radius: 8px;
     }
+
+    /* 실행 이력에서 펼치는 케이스별 진행 내역 */
+    .case-block { margin: 10px 0 14px; }
+    .case-block + .case-block { border-top: 1px solid var(--gridline); padding-top: 10px; }
+    .case-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .case-head__name { font-weight: 600; }
 
     footer { margin-top: 32px; color: var(--text-muted); font-size: 12px; }
     @media (max-width: 860px) { .kpi { grid-template-columns: 1fr 1fr; } }
@@ -608,7 +717,7 @@ SCRIPT = """
 """
 
 
-def render_page(runs, generated_at, scenarios, inline_dir=None):
+def render_page(runs, generated_at, scenarios, inline=None):
     total_cases = sum(len(r["cases"]) for r in runs)
     total_passed = sum(r["passed"] for r in runs)
     total_failed = sum(r["failed"] for r in runs)
@@ -637,7 +746,10 @@ def render_page(runs, generated_at, scenarios, inline_dir=None):
     )
 
     avg = (sum(r["duration"] for r in runs) / len(runs)) if runs else 0.0
-    case_rows, warnings = render_case_rows(runs, scenarios, inline_dir)
+    case_rows, warnings = render_case_rows(runs, scenarios, inline)
+    run_rows = render_run_rows(runs, scenarios, inline)
+    # 표를 모두 렌더링한 뒤라야 담긴 이미지 목록이 확정된다.
+    inline_css = f"<style>{inline.css()}</style>" if inline else ""
 
     for message in warnings:
         print(f"  [경고] {message}", file=sys.stderr)
@@ -649,6 +761,7 @@ def render_page(runs, generated_at, scenarios, inline_dir=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SDK 테스트 자동화 결과</title>
 <style>{STYLE}</style>
+{inline_css}
 </head>
 <body>
 <div class="wrap">
@@ -727,7 +840,7 @@ def render_page(runs, generated_at, scenarios, inline_dir=None):
       </tr>
     </thead>
     <tbody>
-{render_run_rows(runs)}
+{run_rows}
     </tbody>
   </table>
 
@@ -840,7 +953,9 @@ def main():
         if not output.is_absolute():
             output = REPO_ROOT / output
         output.parent.mkdir(parents=True, exist_ok=True)
-        body = render_page(runs, generated_at, scenarios, inline_dir=reports_dir)
+        body = render_page(
+            runs, generated_at, scenarios, inline=InlineShots(reports_dir)
+        )
     else:
         output = reports_dir / "index.html"
         body = render_page(runs, generated_at, scenarios)
